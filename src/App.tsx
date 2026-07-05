@@ -1,15 +1,4 @@
 import { useState, useEffect } from "react";
-import { 
-  collection, 
-  query, 
-  orderBy, 
-  onSnapshot, 
-  doc, 
-  setDoc,
-  getDocs
-} from "firebase/firestore";
-import { User, signOut } from "firebase/auth";
-import { db, auth, ensureUserSignedIn, testConnection } from "./firebase";
 import { Receipt, ShoppingListItem } from "./types";
 import OverviewDashboard from "./components/OverviewDashboard";
 import ReceiptScanner from "./components/ReceiptScanner";
@@ -26,24 +15,26 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
+interface LocalUser {
+  uid: string;
+  email: string;
+  isAnonymous: boolean;
+}
+
 export default function App() {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<LocalUser | null>(null);
   const [activeTab, setActiveTab] = useState<"dashboard" | "scanner" | "trips">("dashboard");
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [shoppingList, setShoppingList] = useState<ShoppingListItem[]>([]);
   const [isInitializing, setIsInitializing] = useState(true);
 
-  // 1. Authenticate and verify connection
+  // 1. Authenticate and verify connection locally
   useEffect(() => {
-    testConnection();
-
-    const unsubscribeAuth = ensureUserSignedIn((signedInUser) => {
-      setUser(signedInUser);
+    setUser({
+      uid: "shopper_guest_user_brl",
+      email: "guest@shopper-receipts.io",
+      isAnonymous: true
     });
-
-    return () => {
-      unsubscribeAuth();
-    };
   }, []);
 
   // 2. Fetch and seed data once user is authenticated entirely using standard browser localStorage
