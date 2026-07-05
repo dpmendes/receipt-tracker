@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, ChangeEvent } from "react";
 import { Receipt } from "../types";
 import {
   BarChart,
@@ -13,20 +13,25 @@ import {
   Pie,
   Cell,
 } from "recharts";
-import { ShoppingBag, TrendingUp, Calendar, Award, Download, Trash2, Search, AlertTriangle } from "lucide-react";
+import { ShoppingBag, TrendingUp, Calendar, Award, Download, Trash2, Search, AlertTriangle, Upload, Database, FileText, Check } from "lucide-react";
+import { ShoppingListItem } from "../types";
 
 interface OverviewDashboardProps {
   receipts: Receipt[];
+  shoppingList: ShoppingListItem[];
   onDeleteReceipt: (id: string) => void;
   onClearDemoData: () => void;
   onClearAllData: () => void;
+  onImportBackup: (receipts: Receipt[], shoppingList: ShoppingListItem[], replaceMode: boolean) => void;
 }
 
 export default function OverviewDashboard({ 
   receipts,
+  shoppingList,
   onDeleteReceipt,
   onClearDemoData,
-  onClearAllData
+  onClearAllData,
+  onImportBackup
 }: OverviewDashboardProps) {
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -220,6 +225,188 @@ export default function OverviewDashboard({
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importSuccess, setImportSuccess] = useState<string | null>(null);
+
+  // Helper to parse CSV manually in a highly robust way
+  const parseCSVData = (text: string): Receipt[] => {
+    const lines = text.split(/\r?\n/);
+    if (lines.length < 2) return [];
+    
+    const clean = (val: string) => {
+      let s = val.trim();
+      if (s.startsWith('"') && s.endsWith('"')) {
+        s = s.slice(1, -1).replace(/""/g, '"');
+      }
+      return s;
+    };
+
+    const headers = lines[0].split(',').map(h => clean(h).toLowerCase());
+    
+    const idIdx = headers.indexOf("id do comprovante");
+    const dateIdx = headers.indexOf("data");
+    const shopIdx = headers.indexOf("estabelecimento");
+    const itemIdx = headers.indexOf("item");
+    const qtyIdx = headers.indexOf("quantidade");
+    const priceIdx = headers.indexOf("preco unitario (brl)");
+    const totalIdx = headers.indexOf("total do comprovante (brl)");
+    const statusIdx = headers.indexOf("status");
+    const createdIdx = headers.indexOf("criado em");
+
+    if (idIdx === -1 || shopIdx === -1 || dateIdx === -1) {
+      throw new Error("Cabeçalhos de CSV incompatíveis. Certifique-se de usar o CSV exportado por este aplicativo.");
+    }
+
+    const receiptsMap: Record<string, Receipt> = {};
+
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+
+      const row: string[] = [];
+      let insideQuotes = false;
+      let currentToken = "";
+      
+      for (let charIdx = 0; charIdx < line.length; charIdx++) {
+        const char = line[charIdx];
+        if (char === '"') {
+          if (insideQuotes && line[charIdx + 1] === '"') {
+            currentToken += '"';
+            charIdx++;
+          } else {
+            insideQuotes = !insideQuotes;
+          }
+        } else if (char === ',' && !insideQuotes) {
+          row.push(currentToken);
+          currentToken = "";
+        } else {
+          currentToken += char;
+        }
+      }
+      row.push(currentToken);
+
+      if (row.length < Math.max(idIdx, dateIdx, shopIdx) + 1) continue;
+
+      const id = clean(row[idIdx]) || `imported_${Date.now()}_${i}`;
+      const date = clean(row[dateIdx]);
+      const shopName = clean(row[shopIdx]);
+      const totalAmount = parseFloat(clean(row[totalIdx] || "0")) || 0;
+      const status = (clean(row[statusIdx]) as "pending" | "confirmed") || "confirmed";
+      
+      let createdAt = Date.now();
+      if (createdIdx !== -1 && row[createdIdx]) {
+        const parsedDate = Date.parse(clean(row[createdIdx]));
+        if (!isNaN(parsedDate)) {
+          createdAt = parsedDate;
+        }
+      }
+
+      const itemName = itemIdx !== -1 ? clean(row[itemIdx]) : "";
+      const quantity = qtyIdx !== -1 ? parseFloat(clean(row[qtyIdx] || "1")) || 1 : 1;
+      const price = priceIdx !== -1 ? parseFloat(clean(row[priceIdx] || "0")) || 0 : 0;
+
+      if (!receiptsMap[id]) {
+        receiptsMap[id] = {
+          id,
+          userId: "",
+          shopName,
+          date,
+          totalAmount,
+          status,
+          createdAt,
+          items: []
+        };
+      }
+
+      if (itemName && itemName !== "Nenhum item cadastrado") {
+        receiptsMap[id].items.push({
+          name: itemName,
+          quantity,
+          price
+        });
+      }
+    }
+
+    return Object.values(receiptsMap);
+  };
+
+  // Export full JSON Backup
+  const handleExportJSONBackup = () => {
+    const backupObj = {
+      version: "1.0.0",
+      exportedAt: Date.now(),
+      receipts,
+      shoppingList
+    };
+
+    const blob = new Blob([JSON.stringify(backupObj, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `shopper_receipts_full_backup_${new Date().toISOString().split('T')[0]}.json`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Handle Local Backup File Import
+  const handleImportBackupFile = (event: ChangeEvent<HTMLInputElement>) => {
+    setImportError(null);
+    setImportSuccess(null);
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const content = e.target?.result as string;
+        
+        if (file.name.endsWith(".json")) {
+          // Parse JSON backup
+          const data = JSON.parse(content);
+          if (!data || !Array.isArray(data.receipts)) {
+            throw new Error("Arquivo JSON inválido. Deve conter uma lista de comprovantes.");
+          }
+          
+          const importedReceipts = data.receipts as Receipt[];
+          const importedShopping = (Array.isArray(data.shoppingList) ? data.shoppingList : []) as ShoppingListItem[];
+          
+          const replace = confirm(
+            `Backup carregado com sucesso!\n\n` +
+            `- Comprovantes encontrados: ${importedReceipts.length}\n` +
+            `- Itens de compra encontrados: ${importedShopping.length}\n\n` +
+            `Deseja SOBRESCREVER todos os seus dados atuais com este backup? (Clique em "OK" para Substituir, ou "Cancelar" para apenas Mesclar com os dados existentes sem apagar nada)`
+          );
+          
+          onImportBackup(importedReceipts, importedShopping, replace);
+          setImportSuccess(`Backup importado com sucesso! (${importedReceipts.length} comprovantes carregados)`);
+        } else if (file.name.endsWith(".csv")) {
+          // Parse CSV
+          const importedReceipts = parseCSVData(content);
+          if (importedReceipts.length === 0) {
+            throw new Error("Nenhum comprovante válido encontrado no arquivo CSV.");
+          }
+
+          const replace = confirm(
+            `CSV carregado com sucesso!\n\n` +
+            `- Comprovantes encontrados: ${importedReceipts.length}\n\n` +
+            `Deseja SOBRESCREVER todos os seus dados atuais com estes dados do CSV? (Clique em "OK" para Substituir, ou "Cancelar" para apenas Mesclar com os dados existentes sem apagar nada)`
+          );
+
+          onImportBackup(importedReceipts, [], replace);
+          setImportSuccess(`Dados do CSV importados com sucesso! (${importedReceipts.length} comprovantes carregados)`);
+        } else {
+          throw new Error("Extensão de arquivo não suportada. Use .json ou .csv.");
+        }
+      } catch (err: any) {
+        setImportError(err.message || "Erro desconhecido ao ler o arquivo.");
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = "";
   };
 
   // Filter list of receipts based on search term
@@ -465,6 +652,62 @@ export default function OverviewDashboard({
             Nenhum comprovante correspondente encontrado.
           </div>
         )}
+
+        {/* Backup & Recovery Zone */}
+        <div className="bg-indigo-50/40 border border-indigo-100 rounded-2xl p-5 space-y-4">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div className="space-y-1">
+              <h4 className="text-xs font-black text-indigo-950 flex items-center gap-1.5">
+                <Database className="w-4 h-4 text-indigo-600 shrink-0" />
+                Backup e Recuperação de Dados (Anti-Perda)
+              </h4>
+              <p className="text-[11px] text-slate-400 leading-relaxed max-w-2xl">
+                Evite a perda de dados se limpar o cache do navegador. Exporte um backup consolidado em <strong>JSON</strong> para restaurar tudo depois (incluindo comprovantes e lista de compras), ou importe arquivos <strong>CSV</strong> de comprovantes exportados anteriormente.
+              </p>
+            </div>
+            
+            <div className="flex flex-wrap gap-2 items-center shrink-0 w-full md:w-auto">
+              {/* Export JSON Button */}
+              <button
+                onClick={handleExportJSONBackup}
+                className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition-all cursor-pointer shadow-sm flex items-center gap-1.5"
+                title="Salvar todos os comprovantes e lista de compras"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Exportar Backup Completo (JSON)
+              </button>
+
+              {/* Import Input Wrapper */}
+              <label className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-bold text-xs rounded-xl transition-all cursor-pointer shadow-sm flex items-center gap-1.5">
+                <Upload className="w-3.5 h-3.5 text-slate-500" />
+                Importar (.json / .csv)
+                <input
+                  type="file"
+                  accept=".json,.csv"
+                  onChange={handleImportBackupFile}
+                  className="hidden"
+                />
+              </label>
+            </div>
+          </div>
+
+          {/* Success / Error Alerts */}
+          {importSuccess && (
+            <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-[11px] font-bold flex items-center gap-2 animate-fadeIn">
+              <Check className="w-4 h-4 text-emerald-500 shrink-0" />
+              <span>{importSuccess}</span>
+              <button onClick={() => setImportSuccess(null)} className="ml-auto hover:text-emerald-950 font-black cursor-pointer">×</button>
+            </div>
+          )}
+
+          {importError && (
+            <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-[11px] font-bold flex items-center gap-2 animate-fadeIn">
+              <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />
+              <span>{importError}</span>
+              <button onClick={() => setImportError(null)} className="ml-auto hover:text-rose-950 font-black cursor-pointer">×</button>
+            </div>
+          )}
+        </div>
 
         {/* Local Storage Sandbox Operations */}
         <div className="bg-slate-50 border border-slate-200/60 rounded-2xl p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-5 mt-4">

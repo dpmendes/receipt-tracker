@@ -198,6 +198,41 @@ export default function App() {
     localStorage.setItem(`shopper_shopping_list_${user.uid}`, JSON.stringify([]));
   };
 
+  // Import backup data (merges or replaces)
+  const handleImportBackup = (importedReceipts: Receipt[], importedShopping: ShoppingListItem[], replaceMode: boolean) => {
+    if (!user) return;
+    
+    let nextReceipts = [...receipts];
+    let nextShopping = [...shoppingList];
+
+    if (replaceMode) {
+      // Overwrite all
+      nextReceipts = importedReceipts.map(r => ({ ...r, userId: user.uid }));
+      nextShopping = importedShopping.map(item => ({ ...item, userId: user.uid }));
+    } else {
+      // Merge: only add items with IDs that don't exist yet
+      const existingReceiptIds = new Set(receipts.map(r => r.id));
+      const existingShoppingIds = new Set(shoppingList.map(item => item.id));
+
+      importedReceipts.forEach(r => {
+        if (!existingReceiptIds.has(r.id)) {
+          nextReceipts.push({ ...r, userId: user.uid });
+        }
+      });
+
+      importedShopping.forEach(item => {
+        if (!existingShoppingIds.has(item.id)) {
+          nextShopping.push({ ...item, userId: user.uid });
+        }
+      });
+    }
+
+    setReceipts(nextReceipts);
+    setShoppingList(nextShopping);
+    localStorage.setItem(`shopper_receipts_${user.uid}`, JSON.stringify(nextReceipts));
+    localStorage.setItem(`shopper_shopping_list_${user.uid}`, JSON.stringify(nextShopping));
+  };
+
   if (isInitializing) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center space-y-4">
@@ -295,9 +330,11 @@ export default function App() {
             >
               <OverviewDashboard 
                 receipts={receipts} 
+                shoppingList={shoppingList}
                 onDeleteReceipt={handleDeleteReceipt}
                 onClearDemoData={handleClearDemoData}
                 onClearAllData={handleClearAllData}
+                onImportBackup={handleImportBackup}
               />
             </motion.div>
           )}
