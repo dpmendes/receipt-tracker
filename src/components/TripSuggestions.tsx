@@ -12,60 +12,44 @@ import {
   Info,
   CalendarDays
 } from "lucide-react";
-import { db } from "../firebase";
-import { collection, doc, addDoc, deleteDoc, setDoc } from "firebase/firestore";
-
 interface TripSuggestionsProps {
   userId: string;
   shoppingList: ShoppingListItem[];
   receipts: Receipt[];
+  onAddItem: (name: string) => void;
+  onToggleItem: (itemId: string) => void;
+  onDeleteItem: (itemId: string) => void;
 }
 
-export default function TripSuggestions({ userId, shoppingList, receipts }: TripSuggestionsProps) {
+export default function TripSuggestions({ 
+  userId, 
+  shoppingList, 
+  receipts,
+  onAddItem,
+  onToggleItem,
+  onDeleteItem
+}: TripSuggestionsProps) {
   const [newItemName, setNewItemName] = useState("");
   const [suggestions, setSuggestions] = useState<TripOptimizationResponse | null>(null);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
   // Add Item to Shopping List
-  const handleAddItem = async (e: FormEvent) => {
+  const handleAddItem = (e: FormEvent) => {
     e.preventDefault();
     if (!newItemName.trim()) return;
-
-    try {
-      const itemId = "item_" + Date.now().toString();
-      await setDoc(doc(db, "shopping_list", itemId), {
-        id: itemId,
-        userId,
-        name: newItemName.trim(),
-        status: "pending",
-        createdAt: Date.now()
-      });
-      setNewItemName("");
-    } catch (err) {
-      console.error("Error adding shopping item:", err);
-    }
+    onAddItem(newItemName);
+    setNewItemName("");
   };
 
   // Toggle Shopping Item Status
-  const handleToggleItem = async (item: ShoppingListItem) => {
-    try {
-      await setDoc(doc(db, "shopping_list", item.id), {
-        ...item,
-        status: item.status === "pending" ? "bought" : "pending"
-      });
-    } catch (err) {
-      console.error("Error toggling shopping item:", err);
-    }
+  const handleToggleItem = (item: ShoppingListItem) => {
+    onToggleItem(item.id);
   };
 
   // Delete Shopping Item
-  const handleDeleteItem = async (itemId: string) => {
-    try {
-      await deleteDoc(doc(db, "shopping_list", itemId));
-    } catch (err) {
-      console.error("Error deleting shopping item:", err);
-    }
+  const handleDeleteItem = (itemId: string) => {
+    onDeleteItem(itemId);
   };
 
   // Ask AI for Suggestions

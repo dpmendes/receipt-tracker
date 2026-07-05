@@ -46,221 +46,172 @@ export default function App() {
     };
   }, []);
 
-  // 2. Fetch and seed data once user is authenticated
+  // 2. Fetch and seed data once user is authenticated entirely using standard browser localStorage
   useEffect(() => {
     if (!user) return;
 
-    // Local static fallback generators in case of Firestore offline/errors
-    const getFallbackReceipts = (uid: string): Receipt[] => [
-      {
-        id: "seed_rcpt_1",
-        userId: uid,
-        shopName: "Pão de Açúcar",
-        date: "2026-07-01",
-        totalAmount: 115.10,
-        status: "confirmed",
-        createdAt: Date.now() - 3 * 24 * 60 * 60 * 1000,
-        items: [
-          { name: "Arroz Integral Camil 1kg", quantity: 2, price: 7.90 },
-          { name: "Leite Integral Ninho 1L", quantity: 4, price: 5.49 },
-          { name: "Azeite de Oliva Extravirgem Gallo 500ml", quantity: 1, price: 38.50 },
-          { name: "Café Melitta Vácuo 500g", quantity: 1, price: 18.90 },
-          { name: "Detergente Ypê Coco 500ml", quantity: 3, price: 2.30 }
-        ]
-      },
-      {
-        id: "seed_rcpt_2",
-        userId: uid,
-        shopName: "Padaria Real",
-        date: "2026-07-03",
-        totalAmount: 51.40,
-        status: "confirmed",
-        createdAt: Date.now() - 1 * 24 * 60 * 60 * 1000,
-        items: [
-          { name: "Pão Francês kg", quantity: 0.6, price: 18.50 },
-          { name: "Pão de Queijo Mini Porção", quantity: 2, price: 12.00 },
-          { name: "Suco de Laranja Natural 1L", quantity: 1, price: 14.90 }
-        ]
-      },
-      {
-        id: "seed_rcpt_3",
-        userId: uid,
-        shopName: "Açougue Swift",
-        date: "2026-07-04",
-        totalAmount: 180.70,
-        status: "confirmed",
-        createdAt: Date.now(),
-        items: [
-          { name: "Picanha Nobre Swift kg", quantity: 1.2, price: 89.90 },
-          { name: "Coração de Alcatra Swift kg", quantity: 1.5, price: 48.00 }
-        ]
-      }
-    ];
+    // Load user-specific local storage items
+    const localReceipts = localStorage.getItem(`shopper_receipts_${user.uid}`);
+    const localShopping = localStorage.getItem(`shopper_shopping_list_${user.uid}`);
 
-    const getFallbackShopping = (uid: string): ShoppingListItem[] => [
-      {
-        id: "seed_item_1",
-        userId: uid,
-        name: "Carvão Vegetal Sacão 5kg",
-        status: "pending",
-        createdAt: Date.now() - 12 * 60 * 60 * 1000
-      },
-      {
-        id: "seed_item_2",
-        userId: uid,
-        name: "Bolo de Cenoura com Chocolate",
-        status: "pending",
-        createdAt: Date.now() - 10 * 60 * 60 * 1000
-      }
-    ];
+    let loadedReceipts: Receipt[] = localReceipts ? JSON.parse(localReceipts) : [];
+    let loadedShopping: ShoppingListItem[] = localShopping ? JSON.parse(localShopping) : [];
 
-    // Listen to receipts
-    const receiptsQuery = query(
-      collection(db, "receipts"),
-      orderBy("date", "desc")
-    );
-    const unsubscribeReceipts = onSnapshot(receiptsQuery, async (snapshot) => {
-      const fetched: Receipt[] = [];
-      snapshot.forEach((doc) => {
-        fetched.push(doc.data() as Receipt);
-      });
+    // Auto-seed initially so analytics dashboard looks stunning on first load
+    if (loadedReceipts.length === 0) {
+      loadedReceipts = [
+        {
+          id: "seed_rcpt_1",
+          userId: user.uid,
+          shopName: "Pão de Açúcar",
+          date: "2026-07-01",
+          totalAmount: 115.10,
+          status: "confirmed",
+          createdAt: Date.now() - 3 * 24 * 60 * 60 * 1000,
+          items: [
+            { name: "Arroz Integral Camil 1kg", quantity: 2, price: 7.90 },
+            { name: "Leite Integral Ninho 1L", quantity: 4, price: 5.49 },
+            { name: "Azeite de Oliva Extravirgem Gallo 500ml", quantity: 1, price: 38.50 },
+            { name: "Café Melitta Vácuo 500g", quantity: 1, price: 18.90 },
+            { name: "Detergente Ypê Coco 500ml", quantity: 3, price: 2.30 }
+          ]
+        },
+        {
+          id: "seed_rcpt_2",
+          userId: user.uid,
+          shopName: "Padaria Real",
+          date: "2026-07-03",
+          totalAmount: 51.40,
+          status: "confirmed",
+          createdAt: Date.now() - 1 * 24 * 60 * 60 * 1000,
+          items: [
+            { name: "Pão Francês kg", quantity: 0.6, price: 18.50 },
+            { name: "Pão de Queijo Mini Porção", quantity: 2, price: 12.00 },
+            { name: "Suco de Laranja Natural 1L", quantity: 1, price: 14.90 }
+          ]
+        },
+        {
+          id: "seed_rcpt_3",
+          userId: user.uid,
+          shopName: "Açougue Swift",
+          date: "2026-07-04",
+          totalAmount: 180.70,
+          status: "confirmed",
+          createdAt: Date.now(),
+          items: [
+            { name: "Picanha Nobre Swift kg", quantity: 1.2, price: 89.90 },
+            { name: "Coração de Alcatra Swift kg", quantity: 1.5, price: 48.00 }
+          ]
+        }
+      ];
+      localStorage.setItem(`shopper_receipts_${user.uid}`, JSON.stringify(loadedReceipts));
+    }
 
-      // Filter receipts belonging to current user
-      const userReceipts = fetched.filter((r) => r.userId === user.uid);
+    if (loadedShopping.length === 0) {
+      loadedShopping = [
+        {
+          id: "seed_item_1",
+          userId: user.uid,
+          name: "Carvão Vegetal Sacão 5kg",
+          status: "pending",
+          createdAt: Date.now() - 12 * 60 * 60 * 1000
+        },
+        {
+          id: "seed_item_2",
+          userId: user.uid,
+          name: "Bolo de Cenoura com Chocolate",
+          status: "pending",
+          createdAt: Date.now() - 10 * 60 * 60 * 1000
+        }
+      ];
+      localStorage.setItem(`shopper_shopping_list_${user.uid}`, JSON.stringify(loadedShopping));
+    }
 
-      // If user has zero receipts, seed initial illustrative data for realistic charts!
-      if (userReceipts.length === 0 && snapshot.empty) {
-        await seedInitialIllustrativeData(user.uid);
-      } else {
-        setReceipts(userReceipts);
-        setIsInitializing(false);
-      }
-    }, (error) => {
-      console.warn("Firestore receipts snapshot failed or client offline. Falling back to safe offline state:", error);
-      setReceipts(getFallbackReceipts(user.uid));
-      setIsInitializing(false);
-    });
-
-    // Listen to shopping list items
-    const shoppingQuery = query(
-      collection(db, "shopping_list"),
-      orderBy("createdAt", "desc")
-    );
-    const unsubscribeShopping = onSnapshot(shoppingQuery, (snapshot) => {
-      const fetched: ShoppingListItem[] = [];
-      snapshot.forEach((doc) => {
-        fetched.push(doc.data() as ShoppingListItem);
-      });
-
-      const userShopping = fetched.filter((item) => item.userId === user.uid);
-      setShoppingList(userShopping);
-    }, (error) => {
-      console.warn("Firestore shopping snapshot failed or client offline. Falling back to safe offline state:", error);
-      setShoppingList(getFallbackShopping(user.uid));
-    });
-
-    return () => {
-      unsubscribeReceipts();
-      unsubscribeShopping();
-    };
+    setReceipts(loadedReceipts);
+    setShoppingList(loadedShopping);
+    setIsInitializing(false);
   }, [user]);
 
-  // Seeding helper to make the dashboard charts gorgeous on the very first load
-  const seedInitialIllustrativeData = async (uid: string) => {
-    const initialReceipts: Receipt[] = [
-      {
-        id: "seed_rcpt_1",
-        userId: uid,
-        shopName: "Pão de Açúcar",
-        date: "2026-07-01",
-        totalAmount: 115.10,
-        status: "confirmed",
-        createdAt: Date.now() - 3 * 24 * 60 * 60 * 1000,
-        items: [
-          { name: "Arroz Integral Camil 1kg", quantity: 2, price: 7.90 },
-          { name: "Leite Integral Ninho 1L", quantity: 4, price: 5.49 },
-          { name: "Azeite de Oliva Extravirgem Gallo 500ml", quantity: 1, price: 38.50 },
-          { name: "Café Melitta Vácuo 500g", quantity: 1, price: 18.90 },
-          { name: "Detergente Ypê Coco 500ml", quantity: 3, price: 2.30 }
-        ]
-      },
-      {
-        id: "seed_rcpt_2",
-        userId: uid,
-        shopName: "Padaria Real",
-        date: "2026-07-03",
-        totalAmount: 51.40,
-        status: "confirmed",
-        createdAt: Date.now() - 1 * 24 * 60 * 60 * 1000,
-        items: [
-          { name: "Pão Francês kg", quantity: 0.6, price: 18.50 },
-          { name: "Pão de Queijo Mini Porção", quantity: 2, price: 12.00 },
-          { name: "Suco de Laranja Natural 1L", quantity: 1, price: 14.90 }
-        ]
-      },
-      {
-        id: "seed_rcpt_3",
-        userId: uid,
-        shopName: "Açougue Swift",
-        date: "2026-07-04",
-        totalAmount: 180.70,
-        status: "confirmed",
-        createdAt: Date.now(),
-        items: [
-          { name: "Picanha Nobre Swift kg", quantity: 1.2, price: 89.90 },
-          { name: "Coração de Alcatra Swift kg", quantity: 1.5, price: 48.00 }
-        ]
-      }
-    ];
-
-    const initialShopping: ShoppingListItem[] = [
-      {
-        id: "seed_item_1",
-        userId: uid,
-        name: "Carvão Vegetal Sacão 5kg",
-        status: "pending",
-        createdAt: Date.now() - 12 * 60 * 60 * 1000
-      },
-      {
-        id: "seed_item_2",
-        userId: uid,
-        name: "Bolo de Cenoura com Chocolate",
-        status: "pending",
-        createdAt: Date.now() - 10 * 60 * 60 * 1000
-      }
-    ];
-
-    try {
-      // Write receipts
-      for (const rcpt of initialReceipts) {
-        await setDoc(doc(db, "receipts", rcpt.id), rcpt);
-      }
-      // Write shopping list items
-      for (const item of initialShopping) {
-        await setDoc(doc(db, "shopping_list", item.id), item);
-      }
-    } catch (err) {
-      console.warn("Could not seed data over Firestore connection, using state directly.", err);
-    } finally {
-      setReceipts(initialReceipts);
-      setIsInitializing(false);
-    }
+  // Callback when a scanned receipt is verified and saved
+  const handleReceiptSaved = (receipt: Receipt) => {
+    if (!user) return;
+    const updatedReceipts = [receipt, ...receipts];
+    setReceipts(updatedReceipts);
+    localStorage.setItem(`shopper_receipts_${user.uid}`, JSON.stringify(updatedReceipts));
   };
 
-  // Callback when a scanned receipt is verified and saved
-  const handleReceiptSaved = async (receipt: Receipt) => {
-    try {
-      await setDoc(doc(db, "receipts", receipt.id), receipt);
-    } catch (err) {
-      console.error("Error saving confirmed receipt:", err);
-    }
+  // Add Shopping List Item
+  const handleAddShoppingItem = (name: string) => {
+    if (!user) return;
+    const newItem: ShoppingListItem = {
+      id: "item_" + Date.now().toString(),
+      userId: user.uid,
+      name: name.trim(),
+      status: "pending",
+      createdAt: Date.now()
+    };
+    const updated = [newItem, ...shoppingList];
+    setShoppingList(updated);
+    localStorage.setItem(`shopper_shopping_list_${user.uid}`, JSON.stringify(updated));
+  };
+
+  // Toggle Shopping List Item status
+  const handleToggleShoppingItem = (itemId: string) => {
+    if (!user) return;
+    const updated = shoppingList.map(item => {
+      if (item.id === itemId) {
+        return {
+          ...item,
+          status: item.status === "pending" ? "bought" : "pending" as const
+        };
+      }
+      return item;
+    });
+    setShoppingList(updated);
+    localStorage.setItem(`shopper_shopping_list_${user.uid}`, JSON.stringify(updated));
+  };
+
+  // Delete Shopping List Item
+  const handleDeleteShoppingItem = (itemId: string) => {
+    if (!user) return;
+    const updated = shoppingList.filter(item => item.id !== itemId);
+    setShoppingList(updated);
+    localStorage.setItem(`shopper_shopping_list_${user.uid}`, JSON.stringify(updated));
+  };
+
+  // Delete specific receipt
+  const handleDeleteReceipt = (receiptId: string) => {
+    if (!user) return;
+    const updated = receipts.filter(r => r.id !== receiptId);
+    setReceipts(updated);
+    localStorage.setItem(`shopper_receipts_${user.uid}`, JSON.stringify(updated));
+  };
+
+  // Clear demo/mock data
+  const handleClearDemoData = () => {
+    if (!user) return;
+    const updatedReceipts = receipts.filter(r => !r.id.startsWith("seed_rcpt_"));
+    const updatedShopping = shoppingList.filter(item => !item.id.startsWith("seed_item_"));
+    setReceipts(updatedReceipts);
+    setShoppingList(updatedShopping);
+    localStorage.setItem(`shopper_receipts_${user.uid}`, JSON.stringify(updatedReceipts));
+    localStorage.setItem(`shopper_shopping_list_${user.uid}`, JSON.stringify(updatedShopping));
+  };
+
+  // Clear all data (empty slate)
+  const handleClearAllData = () => {
+    if (!user) return;
+    setReceipts([]);
+    setShoppingList([]);
+    localStorage.setItem(`shopper_receipts_${user.uid}`, JSON.stringify([]));
+    localStorage.setItem(`shopper_shopping_list_${user.uid}`, JSON.stringify([]));
   };
 
   if (isInitializing) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center space-y-4">
-        <div className="w-12 h-12 border-4 border-slate-200 border-t-sky-500 rounded-full animate-spin" />
-        <p className="text-sm font-semibold text-slate-500">Connecting to secure Firestore workspace...</p>
+        <div className="w-12 h-12 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin" />
+        <p className="text-sm font-semibold text-slate-500">Initializing secure local phone sandbox...</p>
       </div>
     );
   }
@@ -351,7 +302,12 @@ export default function App() {
               exit={{ opacity: 0, y: -15 }}
               className="space-y-6"
             >
-              <OverviewDashboard receipts={receipts} />
+              <OverviewDashboard 
+                receipts={receipts} 
+                onDeleteReceipt={handleDeleteReceipt}
+                onClearDemoData={handleClearDemoData}
+                onClearAllData={handleClearAllData}
+              />
             </motion.div>
           )}
 
@@ -389,7 +345,14 @@ export default function App() {
                   Consolidate your shopping list items into fewer physical trips using historical purchases and store catalog analysis.
                 </p>
               </div>
-              <TripSuggestions userId={user?.uid || ""} shoppingList={shoppingList} receipts={receipts} />
+              <TripSuggestions 
+                userId={user?.uid || ""} 
+                shoppingList={shoppingList} 
+                receipts={receipts} 
+                onAddItem={handleAddShoppingItem}
+                onToggleItem={handleToggleShoppingItem}
+                onDeleteItem={handleDeleteShoppingItem}
+              />
             </motion.div>
           )}
 
@@ -398,7 +361,7 @@ export default function App() {
 
       {/* 3. Footer */}
       <footer className="bg-white border-t border-slate-100 py-4 px-6 text-center text-xs text-slate-400 shrink-0 font-medium">
-        <p>© 2026 Shopper Receipts. Designed in Bento Grid aesthetics with robust Firestore cloud synchronizations.</p>
+        <p>© 2026 Shopper Receipts. Designed in Bento Grid aesthetics with secure local browser persistence.</p>
       </footer>
 
     </div>
