@@ -1,0 +1,6 @@
+{
+  "name": "Receipt Shopping Tracker & Trip Aggregator",
+  "description": "Scan receipts, track grocery and retail expenditures, analyze weekly and monthly BRL spending through interactive charts, and optimize shopping trips using AI suggestions.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

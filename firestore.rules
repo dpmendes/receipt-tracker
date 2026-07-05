@@ -1,0 +1,115 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Catch-All Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Entity Validations
+
+    function isValidReceipt(data) {
+      return data.keys().hasAll(['id', 'userId', 'shopName', 'date', 'totalAmount', 'status', 'createdAt', 'items'])
+        && data.keys().size() == 8
+        && isValidId(data.id)
+        && data.userId is string
+        && isOwner(data.userId)
+        && data.shopName is string
+        && data.shopName.size() > 0
+        && data.shopName.size() <= 200
+        && data.date is string
+        && data.date.size() == 10 // YYYY-MM-DD
+        && data.totalAmount is number
+        && data.totalAmount >= 0
+        && data.totalAmount <= 100000
+        && data.status is string
+        && (data.status == 'pending' || data.status == 'confirmed')
+        && data.createdAt is number
+        && data.items is list
+        && data.items.size() <= 100;
+    }
+
+    function isValidShoppingListItem(data) {
+      return data.keys().hasAll(['id', 'userId', 'name', 'status', 'createdAt'])
+        && data.keys().size() == 5
+        && isValidId(data.id)
+        && data.userId is string
+        && isOwner(data.userId)
+        && data.name is string
+        && data.name.size() > 0
+        && data.name.size() <= 150
+        && data.status is string
+        && (data.status == 'pending' || data.status == 'bought')
+        && data.createdAt is number;
+    }
+
+    // Collection matches
+
+    match /receipts/{receiptId} {
+      allow get: if isSignedIn() && isOwner(existing().userId) && isValidId(receiptId);
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+      allow create: if isSignedIn()
+        && isValidId(receiptId)
+        && receiptId == incoming().id
+        && isValidReceipt(incoming());
+
+      allow update: if isSignedIn()
+        && isValidId(receiptId)
+        && receiptId == incoming().id
+        && isValidReceipt(incoming())
+        && isOwner(existing().userId)
+        // Ensure userId cannot be mutated
+        && incoming().userId == existing().userId
+        // If it was already confirmed, block modifications to prevent history tampering unless changing status itself
+        && (existing().status != 'confirmed' || incoming().diff(existing()).affectedKeys().hasOnly(['status']));
+
+      allow delete: if isSignedIn()
+        && isValidId(receiptId)
+        && isOwner(existing().userId);
+    }
+
+    match /shopping_list/{itemId} {
+      allow get: if isSignedIn() && isOwner(existing().userId) && isValidId(itemId);
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+      allow create: if isSignedIn()
+        && isValidId(itemId)
+        && itemId == incoming().id
+        && isValidShoppingListItem(incoming());
+
+      allow update: if isSignedIn()
+        && isValidId(itemId)
+        && itemId == incoming().id
+        && isValidShoppingListItem(incoming())
+        && isOwner(existing().userId)
+        && incoming().userId == existing().userId;
+
+      allow delete: if isSignedIn()
+        && isValidId(itemId)
+        && isOwner(existing().userId);
+    }
+  }
+}

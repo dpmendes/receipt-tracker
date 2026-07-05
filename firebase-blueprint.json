@@ -1,0 +1,55 @@
+{
+  "entities": {
+    "Receipt": {
+      "title": "Receipt",
+      "description": "Represents a scanned and confirmed receipt",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique receipt ID" },
+        "userId": { "type": "string", "description": "The user who owns this receipt" },
+        "shopName": { "type": "string", "description": "The name of the shop" },
+        "date": { "type": "string", "format": "date", "description": "The date of the purchase" },
+        "totalAmount": { "type": "number", "description": "The total amount paid in BRL" },
+        "status": { "type": "string", "enum": ["pending", "confirmed"], "description": "Confirmation status of the receipt" },
+        "createdAt": { "type": "number", "description": "Timestamp when receipt was scanned" },
+        "items": {
+          "type": "array",
+          "description": "List of bought items",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "quantity": { "type": "number" },
+              "price": { "type": "number" }
+            },
+            "required": ["name", "quantity", "price"]
+          }
+        }
+      },
+      "required": ["id", "userId", "shopName", "date", "totalAmount", "status", "createdAt", "items"]
+    },
+    "ShoppingListItem": {
+      "title": "ShoppingListItem",
+      "description": "An item the user needs to buy, used for trip optimization suggestions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique item ID" },
+        "userId": { "type": "string", "description": "The user who added this item" },
+        "name": { "type": "string", "description": "Name of the item" },
+        "status": { "type": "string", "enum": ["pending", "bought"], "description": "Status of the item" },
+        "createdAt": { "type": "number", "description": "Timestamp when added" }
+      },
+      "required": ["id", "userId", "name", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/receipts/{receiptId}": {
+      "schema": "Receipt",
+      "description": "Scanned receipts and purchase histories"
+    },
+    "/shopping_list/{itemId}": {
+      "schema": "ShoppingListItem",
+      "description": "User's current shopping list for trip planning"
+    }
+  }
+}
